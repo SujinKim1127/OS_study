@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -5,14 +6,13 @@
 #include <sys/resource.h>
 #include <sys/wait.h>
 #include <time.h>
+#include <sched.h>
 
 void performMatrixMultiplication(int processNumber) {
-    // 배열 곱셈을 수행하는 작업을 여기에 구현
     int count = 0;
     int A[100][100], B[100][100];
     long result[100][100];
 
-    // 모든 요소를 1000으로 초기화
     for (int i = 0; i < 100; i++) {
         for (int j = 0; j < 100; j++) {
             A[i][j] = 10000000;
@@ -44,6 +44,14 @@ void formatTime(struct timeval *tv, char *output) {
 int main() {
     struct timeval startTime, endTime;
     char startStr[64], endStr[64];
+    cpu_set_t cpuset;
+
+    CPU_ZERO(&cpuset);
+    CPU_SET(0, &cpuset); // CPU 코어 번호를 여기에 지정 (0번 코어)
+
+    if (sched_setaffinity(0, sizeof(cpuset), &cpuset) == -1) {
+        perror("sched_setaffinity");
+    }
 
     gettimeofday(&startTime, NULL);
 
@@ -66,7 +74,10 @@ int main() {
             printf("PID: %d | NICE: %d | Start Time: %s | End Time: %s | ", processNumber, niceValue, startStr, endStr);
             printf("Elapsed Time: %ld milliseconds\n", (endTime.tv_sec - startTime.tv_sec) * 1000 +
                    (endTime.tv_usec - startTime.tv_usec) / 1000);
-            exit(0);        } else if (pid > 0) {
+            exit(0);        
+        } 
+            
+        else if (pid > 0) {
             // 부모 프로세스에서 자식 프로세스 정보 기록
             int status;
             wait(&status);
