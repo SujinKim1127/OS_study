@@ -26,8 +26,8 @@ void performMatrixMultiplication(int processNumber, struct SharedData *sharedDat
 
     for (int i = 0; i < 100; i++) {
         for (int j = 0; j < 100; j++) {
-            A[i][j] = 10000000;
-            B[i][j] = 20000000;
+            A[i][j] = 999999999;
+            B[i][j] = 999999999;
         }
     }
 
@@ -104,10 +104,27 @@ int main() {
     }
 
     double avgElapsedTime = (double)sharedData->totalElapsedTime / 21;
-    printf("Scheduling Policy: RT RR | Average Elapsed Time: %.2f milliseconds\n", avgElapsedTime);
+
+    FILE *file;
+    char buffer[256]; // 파일 내용을 저장할 버퍼
+    int timeQuantum;    // time quantum
+    // 파일 열기
+    file = fopen("/proc/sys/kernel/sched_rr_timeslice_ms", "r");
+    if (file == NULL) {
+        perror("파일 열기 실패");
+        return 1;
+    }
+
+    // 파일 내용 읽기
+    fgets(buffer, sizeof(buffer), file);
+    sscanf(buffer, "%d", &timeQuantum);
+    printf("Scheduling Policy: RT_RR |  Time Quantum: %d ms  |  Average Elapsed Time: %.2f milliseconds\n", timeQuantum, avgElapsedTime);
+
 
     // 공유 메모리 정리
     munmap(sharedData, sizeof(struct SharedData));
+    // 파일 닫기
+    fclose(file);
 
     return 0;
 }
