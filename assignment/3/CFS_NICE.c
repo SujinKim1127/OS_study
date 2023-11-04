@@ -54,6 +54,14 @@ int main() {
     }
 
     gettimeofday(&startTime, NULL);
+    
+    int totalElapsedTimePipe = 0; // 전체 elapsed time의 합 (파이프로 통신)
+
+    int pipefd[2]; // 파이프용 파일 디스크립터 배열
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        exit(1);
+    }
 
     for (int processNumber = 1; processNumber <= 21; processNumber++) {
         pid_t pid = fork();
@@ -72,12 +80,16 @@ int main() {
             formatTime(&startTime, startStr);
             formatTime(&endTime, endStr);
             printf("PID: %d | NICE: %d | Start Time: %s | End Time: %s | ", processNumber, niceValue, startStr, endStr);
-            printf("Elapsed Time: %ld milliseconds\n", (endTime.tv_sec - startTime.tv_sec) * 1000 +
-                   (endTime.tv_usec - startTime.tv_usec) / 1000);
-            exit(0);        
-        } 
+            long elapsedTime = (endTime.tv_sec - startTime.tv_sec) * 1000 + (endTime.tv_usec - startTime.tv_usec) / 1000;
+            printf("Elapsed Time: %ld milliseconds\n", elapsedTime);
+
+            // elapsedTime를 부모 프로세스로 전달
+            if (write(pipefd[1], &elapsedTime, sizeof(elapsedTime)) == -1) {
+                perror("write");
+            }
             
-        else if (pid > 0) {
+            exit(0);
+        } else if (pid > 0) {
             // 부모 프로세스에서 자식 프로세스 정보 기록
             int status;
             wait(&status);
@@ -86,6 +98,17 @@ int main() {
             return 1;
         }
     }
+
+    // 모든 자식 프로세스의 elapsedTime을 읽어 누적
+    for (int i = 0; i < 21; i++) {
+        int elapsedTime;
+        if (read(pipefd[0], &elapsedTime, sizeof(elapsedTime)) == -1) {
+            perror("read");
+        }
+        totalElapsedTimePipe += elapsedTime;
+    }
+
+    printf("Scheduling Policy: CFS_NICE  |   Average Elapsed Time: %.2f microseconds\n", (double)totalElapsedTimePipe / 21);
 
     return 0;
 }
