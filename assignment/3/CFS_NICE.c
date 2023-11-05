@@ -1,114 +1,155 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <sys/time.h>
-#include <sys/resource.h>
-#include <sys/wait.h>
 #include <time.h>
+#include <unistd.h>
 #include <sched.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
-void performMatrixMultiplication(int processNumber) {
-    int count = 0;
+#define NUM_PROCESSES 21
+#define CPU_CORE 0
+
+// 실행/종료 했을때의 컴퓨터 시간으로 변환하는 함수
+void format_timeval(struct timeval *tv, char *buf, size_t sz) {
+    struct tm *tm;
+    size_t len;
+    long ms;
+
+    tm = localtime(&tv->tv_sec);
+    len = strftime(buf, sz, "%H:%M:%S", tm);
+    ms = tv->tv_usec / 1000;
+    snprintf(buf + len, sz - len, ".%06ld", tv->tv_usec);
+}
+
+void multiply_matrices() {
     int A[100][100], B[100][100];
     long result[100][100];
+    int count = 0;
 
     for (int i = 0; i < 100; i++) {
         for (int j = 0; j < 100; j++) {
             A[i][j] = 10000000;
             B[i][j] = 20000000;
+            result[i][j] = 0;
         }
     }
 
-    while(count < 100){
-        for(int k = 0; k < 100; k++){
-            for(int i = 0; i < 100; i++){ 
-                for(int j = 0; j < 100; j++){
-                    result[k][j] += A[k][i] * B[i][j]; 
+    while (count < 100) {
+        for (int k = 0; k < 100; k++) {
+            for (int i = 0; i < 100; i++) {
+                for (int j = 0; j < 100; j++) {
+                    result[i][j] += A[i][i] * B[i][j];
                 }
             }
-        } 
+        }
         count++;
     }
 }
 
-void formatTime(struct timeval *tv, char *output) {
-    struct tm *tm_info;
-    char buffer[26];
-
-    tm_info = localtime(&tv->tv_sec);
-    strftime(buffer, 26, "%H:%M:%S", tm_info);
-    snprintf(output, 64, "%s.%06ld", buffer, tv->tv_usec);
-}
-
 int main() {
-    struct timeval startTime, endTime;
-    char startStr[64], endStr[64];
-    cpu_set_t cpuset;
+    pid_t pids[NUM_PROCESSES];
+    struct timeval start, end;
+    cpu_set_t set;
 
-    CPU_ZERO(&cpuset);
-    CPU_SET(0, &cpuset); // CPU 코어 번호를 여기에 지정 (0번 코어)
+    CPU_ZERO(&set);
+    CPU_SET(CPU_CORE, &set);
 
-    if (sched_setaffinity(0, sizeof(cpuset), &cpuset) == -1) {
-        perror("sched_setaffinity");
+    // total elapsed time을 구하기 위해 임시파일 생성
+    char temp_filename[] = "/tmp/exec_time_XXXXXX";
+    int temp_file_fd = mkstemp(temp_filename);
+    if (temp_file_fd < 0) {
+        perror("mkstemp");
+        exit(EXIT_FAILURE);
     }
 
-    gettimeofday(&startTime, NULL);
-    
-    int totalElapsedTimePipe = 0; // 전체 elapsed time의 합 (파이프로 통신)
 
-    int pipefd[2]; // 파이프용 파일 디스크립터 배열
-    if (pipe(pipefd) == -1) {
-        perror("pipe");
-        exit(1);
-    }
+    for (int i = 0; i < NUM_PROCESSES; i++) {
+        pids[i] = fork();
+        
+        if (pids[i] < 0) {
+            perror("fork");
+            exit(EXIT_FAILURE);
+        }
+        
+        if (pids[i] == 0) { // 자식 프로세스
+            // CPU 친화도 설정
+            if (sched_setaffinity(getpid(), sizeof(set), &set) == -1) {
+                perror("sched_setaffinity");
+                exit(EXIT_FAILURE);
+            }
 
-    for (int processNumber = 1; processNumber <= 21; processNumber++) {
-        pid_t pid = fork();
-        if (pid == 0) {
-            // 자식 프로세스에서 작업 수행
-            if (processNumber <= 7) {
-                setpriority(PRIO_PROCESS, 0, -20); // 첫 7개 프로세스는 NICE를 -20으로 설정
-            } else if (processNumber <= 14 && processNumber > 7) {
-                setpriority(PRIO_PROCESS, 0, 0); // 그 다음 7개 프로세스는 NICE를 0으로 설정
+            // 다른 nice 값 설정 및 현재 nice 값 가져오기
+            int current_nice;            
+            if (i < 7) {
+                nice(-20);
+                current_nice = -20;
+            } else if (i < 14) {
+                nice(0);
+                current_nice = 0;
             } else {
-                setpriority(PRIO_PROCESS, 0, 19); // 나머지 7개 프로세스는 NICE를 19로 설정
+                nice(19);
+                current_nice = 19;
             }
-            int niceValue = getpriority(PRIO_PROCESS, 0); // NICE 값을 얻어옴
-            performMatrixMultiplication(processNumber);
-            gettimeofday(&endTime, NULL);
-            formatTime(&startTime, startStr);
-            formatTime(&endTime, endStr);
-            printf("PID: %d | NICE: %d | Start Time: %s | End Time: %s | ", processNumber, niceValue, startStr, endStr);
-            long elapsedTime = (endTime.tv_sec - startTime.tv_sec) * 1000 + (endTime.tv_usec - startTime.tv_usec) / 1000;
-            printf("Elapsed Time: %ld milliseconds\n", elapsedTime);
 
-            // elapsedTime를 부모 프로세스로 전달
-            if (write(pipefd[1], &elapsedTime, sizeof(elapsedTime)) == -1) {
-                perror("write");
-            }
+            // 시작 시간 측정
+            gettimeofday(&start, NULL);
+            char start_str[50];
+            format_timeval(&start, start_str, sizeof(start_str));
+
+            // 곱셈 프로세스 실행
+            multiply_matrices();
+
+            // 종료 시간 측정
+            gettimeofday(&end, NULL);
+            char end_str[50];
+            format_timeval(&end, end_str, sizeof(end_str));
+
+            // elapsed time 계산
+            long seconds = end.tv_sec - start.tv_sec;
+            long micros = ((seconds * 1000000) + end.tv_usec) - (start.tv_usec);
             
-            exit(0);
-        } else if (pid > 0) {
-            // 부모 프로세스에서 자식 프로세스 정보 기록
-            int status;
-            wait(&status);
-        } else {
-            perror("Fork failed");
-            return 1;
+            printf("PID: %d | Nice: %d | Start Time: %s | End Time: %s | Elapsed Time: %ld.%06ld seconds\n",
+                   getpid(), current_nice, start_str, end_str, seconds, micros);
+            
+
+            // 실행 시간 임시 파일에 기록
+            dprintf(temp_file_fd, "%ld\n", micros);
+            close(temp_file_fd);
+            exit(EXIT_SUCCESS);
+
         }
     }
 
-    // 모든 자식 프로세스의 elapsedTime을 읽어 누적
-    for (int i = 0; i < 21; i++) {
-        int elapsedTime;
-        if (read(pipefd[0], &elapsedTime, sizeof(elapsedTime)) == -1) {
-            perror("read");
-        }
-        totalElapsedTimePipe += elapsedTime;
+    // 모든 자식 프로세스가 종료될 때까지 대기하고 평균 실행 시간 계산
+    int status;
+    int status;
+    for (int i = 0; i < NUM_PROCESSES; i++) {
+        waitpid(pids[i], &status, 0);
     }
 
-    printf("Scheduling Policy: CFS_NICE  |   Average Elapsed Time: %.2f microseconds\n", (double)totalElapsedTimePipe / 21);
+    // 임시 파일에서 평균 실행 시간 계산    
+    FILE *temp_file = fopen(temp_filename, "r");
+    if (!temp_file) {
+        perror("fopen");
+        exit(EXIT_FAILURE);
+    }
+
+    long micros, total_micros = 0, count = 0;
+    while (fscanf(temp_file, "%ld", &micros) > 0) {
+        total_micros += micros;
+        count++;
+    }
+    fclose(temp_file);
+
+    // 임시 파일 삭제
+    unlink(temp_filename);
+
+    if (count > 0) {
+        long average_micros = total_micros / count;
+        printf("Scheduling Policy: CFS_NICE  |   Average Execution Time: %ld.%06ld seconds\n", average_micros / 1000000, average_micros % 1000000);
+    }
 
     return 0;
 }
