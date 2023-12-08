@@ -5,8 +5,6 @@
 #include <time.h>
 
 // Optimal 
-#define MAX_ACCESS_SEQUENCE_SIZE 10
-
 typedef struct {
     int valid;
     int page_number;
@@ -48,6 +46,10 @@ void simulateLRU(int virtual_addresses[], int num_addresses, int virtual_address
 
     // 가상 주소 처리
     printf("\nNo. \t\t V.A \t\t Page No. \t\t Frame No. \t\t P.A. \t\t Page Fault\n");
+    // 파일을 쓰기 모드로 엽니다.
+    FILE *file = fopen("output.lru", "w");
+    fprintf(file, "\nNo. \t\t V.A \t\t Page No. \t\t Frame No. \t\t P.A. \t\t Page Fault\n");
+
     for (int i = 0; i < num_addresses; i++) {
         virtual_address = virtual_addresses[i];
 
@@ -87,13 +89,24 @@ void simulateLRU(int virtual_addresses[], int num_addresses, int virtual_address
         int physical_address = frame_number * page_size + offset;
 
         // 결과 출력
-        printf("%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
+        if(i < 14){
+            printf("%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
+            i+1, virtual_address, page_number, frame_number, physical_address, (frame_number == -1) ? "H" : "F");
+        }
+        else if (i == 15) printf("=============================================================================================================\n");
+        else if (i == 4999) {
+            printf("%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
+            i+1, virtual_address, page_number, frame_number, physical_address, (frame_number == -1) ? "H" : "F");
+        }
+        fprintf(file, "%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
          i+1, virtual_address, page_number, frame_number, physical_address, (frame_number == -1) ? "H" : "F");
     }
     // 페이지 부재 횟수 출력
     printf("\nPage Faults: %d\n", page_faults);
-
+    fprintf(file, "\nPage Faults: %d\n", page_faults);
     free(page_table);
+    // 파일을 닫습니다.
+    fclose(file);
 }
 
 // FIFO
@@ -142,21 +155,31 @@ int dequeue(FifoQueue *queue) {
     return -1;
 }
 
-// Second_Chance
+// Second-Chance
 typedef struct {
-    bool referenced;
-    unsigned int virtual_page;
+    int valid;
+    int referenced;
+    int page_number;
+    int last_used;
 } SCPageTableEntry;
+
+void initializeSCPageTable(SCPageTableEntry *page_table, int page_table_size) {
+    for (int i = 0; i < page_table_size; i++) {
+        page_table[i].valid = 0;
+        page_table[i].referenced = 0;
+        page_table[i].page_number = -1;
+        page_table[i].last_used = 0;
+    }
+}
 
 
 int main() {
     int A, B, C, D, E;
     int virtual_address_bits, page_size, physical_memory_size;
 
-    int num_addresses = 40;
+    int num_addresses = 5000;
     int *virtual_addresses = (int *)malloc(num_addresses * sizeof(int));
 
-    // Input values from the user in main.c
     printf("A. Simulation에 사용할 가상주소 길이를 선택하시오 (1. 18bits 2. 19bits 3. 20bits): ");
     scanf("%d", &A);
     if (A == 1) virtual_address_bits = 18;
@@ -237,9 +260,19 @@ int main() {
 
         int page_faults = 0;
 
+        // 파일을 쓰기 모드로 엽니다.
+        FILE *file = fopen("output.opt", "w");
+
+        // 파일이 정상적으로 열렸는지 확인합니다.
+        if (file == NULL) {
+            perror("파일을 열 수 없습니다.");
+            return 1;
+        }
+        fprintf(file, "\nNo. \t\t V.A \t\t Page No. \t\t Frame No. \t\t P.A. \t\t Page Fault\n");
+
     // 가상 주소 처리
         printf("\nNo. \t\t V.A \t\t Page No. \t\t Frame No. \t\t P.A. \t\t Page Fault\n");
-        for (int i = 0; i < 40; i++) {
+        for (int i = 0; i < 5000; i++) {
             int virtual_address = virtual_addresses[i];
 
             // 가상 주소 해석
@@ -278,15 +311,31 @@ int main() {
             int physical_address = frame_number * page_size + offset;
 
             // 결과 출력
-            printf("%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
+            if(i < 14){
+                printf("%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
+                i+1, virtual_address, page_number, frame_number,
+                physical_address, (frame_number == -1) ? "H" : "F");
+            }
+            else if (i == 15) printf("=============================================================================================================\n");
+            else if (i == 4999) {
+                printf("%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
+                i+1, virtual_address, page_number, frame_number,
+                physical_address, (frame_number == -1) ? "H" : "F");
+            }
+            // 파일에 입력
+            fprintf(file, "%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
             i+1, virtual_address, page_number, frame_number,
             physical_address, (frame_number == -1) ? "H" : "F");
+
         }
         // 페이지 부재 횟수 출력
         printf("\nPage Faults: %d\n", page_faults);
+        fprintf(file, "\nPage Faults: %d\n", page_faults);
 
         free(virtual_addresses);
         free(page_table);
+        // 파일을 닫습니다.
+        fclose(file);
 
         return 0;
     }
@@ -299,8 +348,18 @@ int main() {
 
         int pageFaults = 0;
         int virtualAddress;
+        // 파일을 쓰기 모드로 엽니다.
+        FILE *file = fopen("output.fifo", "w");
+
+        // 파일이 정상적으로 열렸는지 확인합니다.
+        if (file == NULL) {
+            perror("파일을 열 수 없습니다.");
+            return 1;
+        }
+        // 파일에 쓰기
+        fprintf(file, "\nNo. \t\t V.A \t\t Page No. \t\t Frame No. \t\t P.A. \t\t Page Fault\n");
         printf("\nNo. \t\t V.A \t\t Page No. \t\t Frame No. \t\t P.A. \t\t Page Fault\n");
-        for (int i = 0; i < 40; ++i) {
+        for (int i = 0; i < 5000; ++i) {
             virtualAddress = virtual_addresses[i];
             // 페이지 번호 계산
             int pageNumber = virtualAddress / page_size;
@@ -310,7 +369,7 @@ int main() {
                 pageFaults++;
                 // 큐에서 가장 오래된 페이지 제거
                 int replacedPage = dequeue(fifoQueue);
-
+                
                 // 새로운 페이지 추가
                 pageTable[pageNumber].valid = 1;
                 pageTable[pageNumber].frame_number = fifoQueue->rear;
@@ -321,19 +380,34 @@ int main() {
             }
 
             // 결과 출력
-            printf("%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
+            if(i < 14){
+                printf("%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
+                i+1, virtualAddress, pageNumber, pageTable[pageNumber].frame_number,
+                pageTable[pageNumber].frame_number * page_size + virtualAddress % page_size,
+                pageTable[pageNumber].valid ? "F" : "H");
+            }
+            else if (i == 15) printf("=============================================================================================================\n");
+            else if (i == 4999) {
+                printf("%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
+                i+1, virtualAddress, pageNumber, pageTable[pageNumber].frame_number,
+                pageTable[pageNumber].frame_number * page_size + virtualAddress % page_size,
+                pageTable[pageNumber].valid ? "F" : "H");
+            }
+            fprintf(file, "%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
             i+1, virtualAddress, pageNumber, pageTable[pageNumber].frame_number,
              pageTable[pageNumber].frame_number * page_size + virtualAddress % page_size,
               pageTable[pageNumber].valid ? "F" : "H");
+
         }
 
         // Page Fault 횟수 출력
         printf("Total Page Faults: %d\n", pageFaults);
-
+        fprintf(file, "Total Page Faults: %d\n", pageFaults);    
         // 동적 할당 해제
         free(fifoQueue->pages);
         free(fifoQueue);
-
+        // 파일을 닫습니다.
+        fclose(file);
         return 0;
     }
     if (D == 3) {       // LRU
@@ -341,65 +415,91 @@ int main() {
         free(virtual_addresses);
     }
     if (D == 4) {       // Second-Chance
-    // 초기화
-        int num_frames = physical_memory_size / page_size;
-        SCPageTableEntry *page_table = (SCPageTableEntry *)malloc(num_frames * sizeof(SCPageTableEntry));
-        unsigned int *physical_memory = (unsigned int *)malloc(physical_memory_size);
+        int page_table_size = physical_memory_size / page_size;
+        SCPageTableEntry *page_table = (SCPageTableEntry *)malloc(page_table_size * sizeof(SCPageTableEntry));
+        initializeSCPageTable(page_table, page_table_size);
 
         int page_faults = 0;
+        // 파일을 쓰기 모드로 엽니다.
+        FILE *file = fopen("output.sc", "w");
+
+        // 파일이 정상적으로 열렸는지 확인합니다.
+        if (file == NULL) {
+            perror("파일을 열 수 없습니다.");
+            return 1;
+        }
+        // 파일에 쓰기
+        fprintf(file, "\nNo. \t\t V.A \t\t Page No. \t\t Frame No. \t\t P.A. \t\t Page Fault\n");
         printf("\nNo. \t\t V.A \t\t Page No. \t\t Frame No. \t\t P.A. \t\t Page Fault\n");
-
+        int virtual_address;
         // 가상 주소에 대한 페이지 교체 시뮬레이션
-        for (int i = 0; i < 40; ++i) {
-            unsigned int virtual_address = virtual_addresses[i];
-            unsigned int virtual_page_number = virtual_address / page_size;
+        for (int i = 0; i < 5000; ++i) {
+            virtual_address = virtual_addresses[i];
 
-            // 페이지 테이블 엔트리 확인
-            int frame_index = -1;
-            for (int j = 0; j < num_frames; ++j) {
-                if (page_table[j].virtual_page == virtual_page_number) {
-                    frame_index = j;
-                    page_table[j].referenced = true;
+            // 가상 주소 해석
+            int page_number = virtual_address / page_size;
+            int offset = virtual_address % page_size;
+
+            // 페이지 테이블 검사
+            int frame_number = -1;
+            for (int j = 0; j < page_table_size; j++) {
+                if (page_table[j].valid && page_table[j].page_number == page_number) {
+                    frame_number = j;
+                    page_table[j].referenced = 1; 
+                    page_table[j].last_used = i;
                     break;
                 }
             }
 
-            if (frame_index == -1) {
-                // 페이지 폴트 발생
+            // 페이지 부재 처리
+            if (frame_number == -1) {
                 page_faults++;
 
-                // Second-Chance 알고리즘 적용
+                // Second-Chance (Clock) algorithm
                 while (1) {
-                    if (!page_table[frame_index].referenced) {
-                        // 현재 프레임이 참조되지 않았으면 교체
+                    frame_number = (frame_number + 1) % page_table_size;
+
+                    if (!page_table[frame_number].referenced) {
+                        // If the page is not referenced, replace it
                         break;
                     } else {
-                        // 참조 비트를 초기화하고 다음 프레임 확인
-                        page_table[frame_index].referenced = false;
-                        frame_index = (frame_index + 1) % num_frames;
+                        // Reset the referenced bit
+                        page_table[frame_number].referenced = 0;
                     }
                 }
 
-                // 새로운 페이지 로드
-                page_table[frame_index].virtual_page = virtual_page_number;
-                page_table[frame_index].referenced = true;
+                // Update the selected frame with the new page
+                page_table[frame_number].valid = 1;
+                page_table[frame_number].page_number = page_number;
+                page_table[frame_number].referenced = 1;
+                page_table[frame_number].last_used = i;
             }
 
+            // 물리 주소 계산
+            int physical_address = frame_number * page_size + offset;
+
             // 결과 출력
-            unsigned int physical_address = frame_index * page_size + (virtual_address % page_size);
-            // 결과 출력
-            printf("%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
-            i+1, virtual_address, virtual_page_number, frame_index,
-            physical_address, (frame_index == -1) ? "H" : "F");
+            if(i < 14){
+                printf("%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
+                i+1, virtual_address, page_number, frame_number, physical_address, (frame_number == -1) ? "H" : "F");
+            }
+            else if (i == 15) printf("=============================================================================================================\n");
+            else if (i == 4999) {
+                printf("%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
+                i + 1, virtual_address, page_number, frame_number, physical_address, (frame_number == -1) ? "H" : "F");
+            }
+            fprintf(file, "%d \t\t %-16d %-14d \t %-14d \t %-18d%s\n",
+            i + 1, virtual_address, page_number, frame_number, physical_address, (frame_number == -1) ? "H" : "F");
+
         }
 
-        // 페이지 폴트 횟수 출력
-        printf("\n페이지 폴트 발생 횟수: %d\n", page_faults);
-
-        // 메모리 해제
+        // 페이지 부재 횟수 출력
+        printf("\nPage Faults: %d\n", page_faults);
+        fprintf(file, "total page faults:  %d\n", page_faults);
+        free(virtual_addresses);
         free(page_table);
-        free(physical_memory);
 
+        fclose(file);
         return 0;
     }
 
