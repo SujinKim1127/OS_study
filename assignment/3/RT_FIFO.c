@@ -21,12 +21,16 @@ void initialize_matrices(int A[100][100], int B[100][100]) {
 }
 
 // 메인 계산 함수
-void multiply_matrices() {
+void multiply_matrices(int fd[2]) {
     int count = 0;
     int A[100][100], B[100][100];
     long result[100][100] = {0};
+    struct timeval start, end;
 
     initialize_matrices(A, B);
+
+    // 작업 시작 직전에 시간 측정
+    gettimeofday(&start, NULL);
 
     while (count < 100) {
         for (int k = 0; k < 100; k++) {
@@ -38,7 +42,37 @@ void multiply_matrices() {
         }
         count++;
     }
+
+    // 작업 종료 시간 측정
+    gettimeofday(&end, NULL);
+
+    // 시간 측정 결과를 문자열로 변환
+    char start_str[100], end_str[100];
+    struct tm *start_tm, *end_tm;
+    long start_millis, end_millis;
+    double exec_time;
+
+    start_tm = localtime(&start.tv_sec);
+    strftime(start_str, sizeof(start_str), "%H:%M:%S", start_tm);
+    start_millis = start.tv_usec / 1000;
+
+    end_tm = localtime(&end.tv_sec);
+    strftime(end_str, sizeof(end_str), "%H:%M:%S", end_tm);
+    end_millis = end.tv_usec / 1000;
+
+    // 실행 시간 계산
+    exec_time = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
+
+    // 결과 출력
+    printf("PID: %d | Start Time: %s.%03ld | End Time: %s.%03ld | Elapsed Time: %.2f ms\n",
+           getpid(), start_str, start_millis, end_str, end_millis, exec_time);
+
+    // 파이프에 실행 시간 쓰기
+    close(fd[0]); // 읽기 끝 닫기
+    write(fd[1], &exec_time, sizeof(exec_time));
+    close(fd[1]); // 쓰기 끝 닫기
 }
+
 
 int main() {
     pid_t pids[NUM_PROCESSES];
@@ -48,7 +82,7 @@ int main() {
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    CPU_SET(0, &cpuset); // CPU 0에 바인딩
+    CPU_SET(0, &cpuset); // CPU 0에 바인딩 (cpu 1개만 사용하도록)
 
     for (int i = 0; i < NUM_PROCESSES; i++) {
         // 파이프 생성
@@ -78,35 +112,7 @@ int main() {
             }
 
             // 메인 계산 함수 실행
-            multiply_matrices();
-
-            // 실행 종료 시간 측정
-            gettimeofday(&end, NULL);
-
-            char start_str[100];
-            struct tm *start_tm;
-            start_tm = localtime(&start.tv_sec);
-            strftime(start_str, sizeof(start_str), "%H:%M:%S", start_tm);
-            long start_millis = start.tv_usec / 1000; // 밀리초 단위 변환
-
-            // 종료 시간 포매팅
-            char end_str[100];
-            struct tm *end_tm;
-            end_tm = localtime(&end.tv_sec);
-            strftime(end_str, sizeof(end_str), "%H:%M:%S", end_tm);
-            long end_millis = end.tv_usec / 1000; // 밀리초 단위 변환
-
-            // 실행 시간 계산
-            double exec_time = (end.tv_sec - start.tv_sec) * 1000.0;
-            exec_time += (end.tv_usec - start.tv_usec) / 1000.0;
-
-            printf("PID: %d | Start Time: %s.%03ld | End Time: %s.%03ld | Elapsed Time: %.2f ms\n",
-                getpid(), start_str, start_millis, end_str, end_millis, exec_time);
-
-            // 파이프에 실행 시간 쓰기
-            close(fd[i][0]); // 읽기 끝 닫기
-            write(fd[i][1], &exec_time, sizeof(exec_time));
-            close(fd[i][1]); // 쓰기 끝 닫기
+            multiply_matrices(fd[i]);
 
             exit(0);
         } else if (pids[i] < 0) {

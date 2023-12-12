@@ -24,3 +24,15 @@ int main() {
     return 0;
 
 }
+
+#include <linux/kernel.h>
+#include <linux/syscalls.h>
+
+SYSCALL_DEFINE2(minus_to_plus, int, a,int, b)
+{
+        int result = a + b;
+        printk("Output: %d\n", result);
+
+        return result;
+}
+
